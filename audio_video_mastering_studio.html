@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Audio & Video Mastering Studio</title>
+<style>
+:root{--bg:#f4f7fb;--fg:#0f1a2b;--panel:#fff;--line:#cfd8e6;--muted:#51607a;--input:#f1f4f9;--accent:#1fbf94;--onaccent:#062018;--btn2:#e1e8f3;--btn2fg:#0f1a2b;color-scheme:light;
+ box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#090d16;--fg:#eef3ff;--panel:#121a2a;--line:#29364e;--muted:#a5b2c9;--input:#080e1b;--accent:#65e6bd;--onaccent:#071510;--btn2:#2a3850;--btn2fg:#fff;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#090d16;--fg:#eef3ff;--panel:#121a2a;--line:#29364e;--muted:#a5b2c9;--input:#080e1b;--accent:#65e6bd;--onaccent:#071510;--btn2:#2a3850;--btn2fg:#fff;color-scheme:dark}
+html{background:var(--bg);scroll-padding-top:env(safe-area-inset-top,0px)}
+#errlog{white-space:pre-wrap;overflow-wrap:anywhere;background:var(--input);border:1px solid var(--line);border-radius:9px;padding:10px;font:12px ui-monospace,monospace;color:var(--fg)}
+
+*{box-sizing:border-box}
+body{margin:0;padding:20px;background:var(--bg);color:var(--fg);font:15px system-ui,sans-serif}
+main{max-width:1000px;margin:auto}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:15px;padding:18px;margin:16px 0}
+h1{font-size:clamp(26px,5vw,38px)}
+h2{font-size:19px}
+p,.muted{color:var(--muted);line-height:1.5}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:17px}
+.control{display:flex;flex-direction:column;gap:8px}
+.control label{display:flex;justify-content:space-between}
+input[type=range]{width:100%;accent-color:var(--accent)}
+select,input[type=file],input[type=text]{width:100%;padding:10px;border:1px solid var(--line);border-radius:9px;background:var(--input);color:var(--fg)}
+button{padding:11px 14px;border:0;border-radius:9px;background:var(--accent);color:var(--onaccent);font-weight:bold;cursor:pointer}
+button.secondary{background:var(--btn2);color:var(--btn2fg)}
+button:disabled{opacity:.5}
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.song{padding:14px;border:1px solid var(--line);border-radius:11px;margin-top:12px;overflow-wrap:anywhere}
+.song h3{margin:0 0 5px}
+.song audio,.song video{width:100%;max-height:260px;margin-top:10px}
+.song small{color:var(--muted)}
+#coverPreview{width:min(100%,240px);aspect-ratio:1;object-fit:cover;border-radius:10px;margin-top:10px}
+progress{width:100%;height:12px;accent-color:var(--accent)}
+.notice{font-size:13px;color:var(--muted)}
+.song.selected{border-color:var(--accent)}
+.song .head{display:flex;align-items:flex-start;gap:10px}
+.song .head h3{flex:1}
+.song .pick{width:22px;height:22px;margin-top:2px;accent-color:var(--accent);flex:none;cursor:pointer}
+.selbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:12px}
+.selbar button{padding:8px 11px}
+.check{display:flex;align-items:center;gap:8px;margin-top:12px;color:var(--fg)}
+.check input{width:20px;height:20px;accent-color:var(--accent)}
+</style>
+</head>
+<body>
+<main>
+<h1>Audio & Video Mastering Studio</h1>
+<p>Batch process audio files and videos, master their sound, and export each file separately.</p>
+
+<section class="panel">
+<h2>1. Select audio and video files</h2>
+<input id="files" type="file" multiple accept="audio/*,video/*">
+<details style="margin-top:10px"><summary class="muted">Can’t pick your files? Try this picker</summary>
+<input id="files2" type="file" multiple style="margin-top:8px">
+<p class="notice">This one shows every file type. Files that aren’t audio or video are ignored.</p></details>
+<div class="selbar">
+<button id="selAll" class="secondary">Select all</button>
+<button id="selNone" class="secondary">Select none</button>
+<button id="selVideos" class="secondary">Videos only</button>
+<button id="clear" class="secondary">Clear list</button>
+<span id="selCount" class="muted"></span>
+</div>
+<div id="songs"></div>
+<p class="notice">Video audio is extracted for mastering. Video export keeps the original footage and replaces its audio with the mastered version.</p>
+</section>
+
+<section class="panel">
+<h2>2. Mastering controls</h2>
+<div class="grid">
+<div class="control"><label for="gain">Gain <span id="gainV"></span></label><input id="gain" type="range" min="-18" max="18" step=".5" value="0"></div>
+<div class="control"><label for="limiter">Limiter ceiling <span id="limiterV"></span></label><input id="limiter" type="range" min="-6" max="0" step=".5" value="-1"></div>
+<div class="control"><label for="bass">Bass <span id="bassV"></span></label><input id="bass" type="range" min="-12" max="12" step=".5" value="0"></div>
+<div class="control"><label for="mids">Mids <span id="midsV"></span></label><input id="mids" type="range" min="-12" max="12" step=".5" value="0"></div>
+<div class="control"><label for="treble">Treble <span id="trebleV"></span></label><input id="treble" type="range" min="-12" max="12" step=".5" value="0"></div>
+<div class="control"><label for="compression">Compression <span id="compressionV"></span></label><input id="compression" type="range" min="0" max="20" step="1" value="0"></div>
+<div class="control"><label for="stereo">Stereo width <span id="stereoV"></span></label><input id="stereo" type="range" min="0" max="2" step=".05" value="1"></div>
+<div class="control"><label for="fadeIn">Fade in <span id="fadeInV"></span></label><input id="fadeIn" type="range" min="0" max="10" step=".25" value="0"></div>
+<div class="control"><label for="fadeOut">Fade out <span id="fadeOutV"></span></label><input id="fadeOut" type="range" min="0" max="20" step=".25" value="0"></div>
+<div class="control"><label for="speed">Speed <span id="speedV"></span></label><input id="speed" type="range" min=".5" max="2" step=".05" value="1"></div>
+</div>
+<p class="notice">Speed changes the audio duration and pitch. The limiter reduces peaks to help avoid clipping.</p>
+</section>
+
+<section class="panel">
+<h2>3. Cover art for audio-only videos</h2>
+<input id="cover" type="file" accept="image/*">
+<img id="coverPreview" alt="Cover preview" hidden>
+<p class="notice">For audio files exported as MP4, the cover fills the background with a blurred enlargement and appears centered. Output is always a 1920×1080 landscape video.</p>
+<label class="check"><input id="allCover" type="checkbox"> Replace the picture of ALL video files with the cover image (their audio is extracted and mastered)</label>
+<p class="notice">You can also do this per video, and give any file its own cover image, in the file list in step 1.</p>
+<div class="control" style="margin-top:14px"><label for="vsize">Video files: output size</label>
+<select id="vsize">
+<option value="auto" selected>Auto (convert to 1920×1080 only if the video isn’t already widescreen)</option>
+<option value="force">Always 1920×1080 (blurred sides if needed)</option>
+<option value="keep">Keep original size</option>
+</select></div>
+<p class="notice">YouTube treats videos that are square or vertical (and under 3 minutes) as Shorts. Converting makes them regular widescreen videos, but it re-encodes the footage, which is slower.</p>
+</section>
+
+<section class="panel">
+<h2>4. Batch export</h2>
+<p class="muted">Tick the files you want in step 1, then export them together.</p>
+<div class="actions">
+<button id="selWav">Export selected as WAV</button>
+<button id="selMp4">Export selected as MP4</button>
+<button id="allWav" class="secondary">Export all as WAV</button>
+<button id="allMp4" class="secondary">Export all as MP4</button>
+</div>
+<label class="check"><input id="zip" type="checkbox" checked> Download everything as one ZIP file (recommended for several files)</label>
+<p id="status" role="status">Select some files to begin.</p>
+<pre id="errlog" hidden></pre>
+<progress id="progress" max="1" value="0"></progress>
+<div class="actions">
+<button id="testEncoder" class="secondary">Test video encoder</button>
+<button id="dlEncoder" class="secondary">Download encoder files (ZIP)</button>
+</div>
+<p class="notice">The test loads the encoder and reports whether it worked. The ZIP holds the encoder files (about 31 MB): unzip it so the <b>ffmpeg</b> folder sits next to this HTML page and it will load them from there instead of downloading each time.</p>
+<p class="notice">Without the ZIP option, browsers may ask permission to allow multiple downloads. In the hosted version, WAV files are always delivered inside a ZIP. Video export uses FFmpeg.wasm. The first export downloads its encoder and may use substantial memory on a phone or VR headset.</p>
+</section>
+</main>
+
+<script type="module">
+const $=id=>document.getElementById(id);
+let items=[],cover=null,busy=false;
+const usedNames=new Set();
+
+const sliders=[
+ ["gain"," dB"],["limiter"," dB"],["bass"," dB"],["mids"," dB"],
+ ["treble"," dB"],["compression",""],["stereo","×"],
+ ["fadeIn"," s"],["fadeOut"," s"],["speed","×"]
+];
+for(const [id,unit] of sliders){
+ const el=$(id),out=$(id+"V");
+ const update=()=>out.textContent=el.value+unit;
+ el.addEventListener("input",update);update();
+}
+
+function say(text){$("status").textContent=text}
+function errText(e){
+ if(e==null)return "Unknown error";
+ if(typeof e==="string")return e||"Unknown error";
+ if(e.message)return e.message;
+ if(e.name)return e.name;
+ try{const j=JSON.stringify(e);if(j&&j!=="{}")return j}catch{}
+ return "Unknown error";
+}
+function logError(name,e){
+ const box=$("errlog");box.hidden=false;
+ box.textContent+=(box.textContent?"\n\n":"")+name+":\n"+errText(e);
+ console.error(e);
+}
+function loadImage(file){
+ return new Promise((res,rej)=>{
+  const img=new Image();
+  img.onload=()=>res(img);img.onerror=()=>rej(new Error("Could not read that image."));
+  img.src=URL.createObjectURL(file);
+ });
+}
+const wantsCover=x=>!x.video||x.useCover||$("allCover").checked;
+function slug(s){return(s||"mastered-track").replace(/\.[^.]+$/,"").replace(/[^a-z0-9_-]+/gi,"-").replace(/^-+|-+$/g,"").slice(0,100)||"mastered-track"}
+function uniqueName(base,ext){
+ let root=slug(base),name=root+ext,n=2;
+ while(usedNames.has(name.toLowerCase()))name=root+"-"+n+++ext;
+ usedNames.add(name.toLowerCase());return name;
+}
+async function getDownloads(){
+ try{return window.claude?await window.claude.use("downloads"):null}catch{return null}
+}
+async function download(blob,name){
+ const dl=await getDownloads();
+ if(dl){await dl.save({filename:name,data:blob});return}
+ const url=URL.createObjectURL(blob),a=document.createElement("a");
+ a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();
+ setTimeout(()=>URL.revokeObjectURL(url),120000);
+}
+function isVideo(file){return file.type.startsWith("video/")||/\.(mp4|mov|webm|mkv|avi|m4v)$/i.test(file.name)}
+function isAudio(file){return file.type.startsWith("audio/")||/\.(wav|mp3|m4a|aac|ogg|flac|opus)$/i.test(file.name)}
+
+for(const fid of ["files","files2"])$(fid).addEventListener("change",async e=>{
+ const files=[...e.target.files];e.target.value="";
+ for(const file of files){
+  if(!isVideo(file)&&!isAudio(file))continue;
+  items.push({file,name:file.name,video:isVideo(file),status:"Ready",selected:true,useCover:false,cover:null,id:Math.random().toString(36).slice(2)});
+ }
+ render();say(items.length+" file(s) in the batch.");
+});
+$("clear").onclick=()=>{if(busy)return;items=[];render();say("List cleared.")};
+
+function render(){
+ const root=$("songs");root.replaceChildren();
+ if(!items.length){root.innerHTML='<p class="muted">No files selected.</p>';return}
+ for(const item of items){
+  const card=document.createElement("div");card.className="song"+(item.selected?" selected":"");
+  const head=document.createElement("div");head.className="head";
+  const pick=document.createElement("input");pick.type="checkbox";pick.className="pick";pick.checked=item.selected;
+  pick.setAttribute("aria-label","Select "+item.name);
+  pick.onchange=()=>{item.selected=pick.checked;card.classList.toggle("selected",item.selected);updateCount()};
+  const h=document.createElement("h3");h.textContent=item.name;head.append(pick,h);
+  const meta=document.createElement("small");meta.textContent=(item.video?"VIDEO":"AUDIO")+" · "+item.status;
+  const preview=document.createElement(item.video?"video":"audio");
+  preview.controls=true;preview.preload="metadata";preview.src=URL.createObjectURL(item.file);
+  const coverRow=document.createElement("div");let cb=null;
+  if(item.video){
+   const lab=document.createElement("label");lab.className="check";
+   cb=document.createElement("input");cb.type="checkbox";cb.checked=item.useCover;
+   cb.onchange=()=>{item.useCover=cb.checked};
+   lab.append(cb,"Replace the video picture with a cover image (audio only)");coverRow.append(lab);
+  }
+  const cin=document.createElement("input");cin.type="file";cin.accept="image/*";cin.style.marginTop="10px";
+  cin.setAttribute("aria-label","Cover image for "+item.name);
+  const cnote=document.createElement("small");
+  cnote.textContent=item.cover?"This file has its own cover image.":"Optional: own cover image for this file (otherwise the shared cover from step 3).";
+  cin.onchange=async()=>{
+   const f=cin.files[0];if(!f)return;
+   try{item.cover=await loadImage(f);if(item.video){item.useCover=true;cb.checked=true}cnote.textContent="This file has its own cover image.";say("Cover set for "+item.name+".")}
+   catch(e){say(errText(e))}
+  };
+  coverRow.append(cin,cnote);
+  const actions=document.createElement("div");actions.className="actions";
+  const wav=document.createElement("button");wav.textContent="Export mastered WAV";
+  wav.onclick=()=>runExport([item],"wav");
+  const mp4=document.createElement("button");mp4.textContent="Export MP4";
+  mp4.onclick=()=>runExport([item],"mp4");
+  const remove=document.createElement("button");remove.className="secondary";remove.textContent="Remove";
+  remove.onclick=()=>{if(busy)return;items=items.filter(x=>x!==item);render()};
+  actions.append(wav,mp4,remove);card.append(head,meta,preview,coverRow,actions);root.append(card);
+ }
+ updateCount();
+}
+function updateCount(){
+ const n=items.filter(x=>x.selected).length;
+ $("selCount").textContent=items.length?n+" of "+items.length+" selected":"";
+ $("selWav").textContent="Export selected as WAV"+(n?" ("+n+")":"");
+ $("selMp4").textContent="Export selected as MP4"+(n?" ("+n+")":"");
+}
+$("selAll").onclick=()=>{items.forEach(x=>x.selected=true);render()};
+$("selNone").onclick=()=>{items.forEach(x=>x.selected=false);render()};
+$("selVideos").onclick=()=>{items.forEach(x=>x.selected=x.video);render()};
+$("cover").addEventListener("change",e=>{
+ const file=e.target.files[0];if(!file)return;
+ const url=URL.createObjectURL(file),img=new Image();
+ img.onload=()=>{cover=img;$("coverPreview").src=url;$("coverPreview").hidden=false;say("Cover image loaded.")};
+ img.onerror=()=>say("Could not read the cover image.");
+ img.src=url;
+});
+
+function readSettings(){
+ return Object.fromEntries(sliders.map(([id])=>[id,Number($(id).value)]));
+}
+function resample(data,n){
+ const out=new Float32Array(n),ratio=data.length/n;
+ for(let i=0;i<n;i++){
+  const p=i*ratio,a=Math.min(data.length-1,Math.floor(p)),b=Math.min(data.length-1,a+1),f=p-a;
+  out[i]=data[a]*(1-f)+data[b]*f;
+ }
+ return out;
+}
+function master(buffer,s){
+ const rate=buffer.sampleRate,channels=Math.min(2,buffer.numberOfChannels);
+ const length=Math.max(1,Math.floor(buffer.length/s.speed));
+ const data=[];
+ for(let c=0;c<channels;c++)data.push(resample(buffer.getChannelData(c),length));
+ if(channels===2){
+  for(let i=0;i<length;i++){
+   const l=data[0][i],r=data[1][i],m=(l+r)/2,side=(l-r)/2*s.stereo;
+   data[0][i]=m+side;data[1][i]=m-side;
+  }
+ }
+ const bassG=10**(s.bass/20)-1,midG=10**(s.mids/20)-1,highG=10**(s.treble/20)-1;
+ const a1=1-Math.exp(-2*Math.PI*180/rate),a2=1-Math.exp(-2*Math.PI*1200/rate),a3=1-Math.exp(-2*Math.PI*4500/rate);
+ for(let c=0;c<channels;c++){
+  let lo=0,mid=0,hi=0;const d=data[c];
+  for(let i=0;i<length;i++){
+   const x=d[i];lo+=a1*(x-lo);mid+=a2*(x-mid);hi+=a3*(x-hi);
+   d[i]=x+lo*bassG+(mid-lo)*midG+(x-hi)*highG;
+  }
+ }
+ const gain=10**(s.gain/20),ceiling=10**(s.limiter/20);
+ const fin=Math.floor(s.fadeIn*rate),fout=Math.floor(s.fadeOut*rate),threshold=10**(-18/20),ratio=1+s.compression/4;
+ for(let i=0;i<length;i++){
+  let peak=0;for(let c=0;c<channels;c++)peak=Math.max(peak,Math.abs(data[c][i]));
+  let cg=1;if(s.compression&&peak>threshold)cg=(threshold+(peak-threshold)/ratio)/peak;
+  let fade=1;if(fin&&i<fin)fade=i/fin;if(fout&&i>=length-fout)fade=Math.min(fade,(length-i)/fout);
+  for(let c=0;c<channels;c++){
+   let x=data[c][i]*gain*cg*fade;
+   x=ceiling*Math.tanh(x/Math.max(.00001,ceiling));
+   data[c][i]=Math.max(-1,Math.min(1,x));
+  }
+ }
+ const out=new AudioBuffer({length,numberOfChannels:channels,sampleRate:rate});
+ for(let c=0;c<channels;c++)out.copyToChannel(data[c],c);
+ return out;
+}
+function wavBlob(buffer){
+ const ch=buffer.numberOfChannels,n=buffer.length,bytes=n*ch*2;
+ const ab=new ArrayBuffer(44+bytes),v=new DataView(ab);
+ const str=(o,s)=>{for(let i=0;i<s.length;i++)v.setUint8(o+i,s.charCodeAt(i))};
+ str(0,"RIFF");v.setUint32(4,36+bytes,true);str(8,"WAVE");str(12,"fmt ");
+ v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,ch,true);
+ v.setUint32(24,buffer.sampleRate,true);v.setUint32(28,buffer.sampleRate*ch*2,true);
+ v.setUint16(32,ch*2,true);v.setUint16(34,16,true);str(36,"data");v.setUint32(40,bytes,true);
+ let o=44;
+ for(let i=0;i<n;i++)for(let c=0;c<ch;c++){
+  const x=Math.max(-1,Math.min(1,buffer.getChannelData(c)[i]));
+  v.setInt16(o,x<0?x*32768:x*32767,true);o+=2;
+ }
+ return new Blob([ab],{type:"audio/wav"});
+}
+
+async function decodeAudio(file){
+ const ctx=new (window.AudioContext||window.webkitAudioContext)();
+ try{return await ctx.decodeAudioData(await file.arrayBuffer())}
+ catch(e){throw new Error("Could not decode the audio in this file (unsupported format or no audio track)."+(e&&e.message?" "+e.message:""))}
+ finally{await ctx.close()}
+}
+// Extract a video’s audio: the browser decodes it directly, FFmpeg is only the fallback.
+async function videoAudioBuffer(file){
+ // Only small, browser-friendly containers are decoded natively; .mkv and big files go to FFmpeg.
+ const native=/\.(mp4|m4v|mov|webm)$/i.test(file.name)&&file.size<100e6;
+ if(native){try{return await decodeAudio(file)}catch{}}
+ return decodeAudio(await extractVideoAudio(file));
+}
+
+/*
+FFmpeg.wasm handles video decoding, audio extraction, audio filtering,
+and muxing the original video stream with the mastered audio.
+*/
+let ffmpegPromise=null;
+async function getFFmpeg(){
+ if(!ffmpegPromise){
+  ffmpegPromise=(async()=>{
+   // Sources are tried in order: an optional ./ffmpeg/ folder next to this page, then two CDNs.
+   const sources=[
+    {name:"local folder",lib:"./ffmpeg/lib/",base:"./ffmpeg/core/"},
+    {name:"jsDelivr",lib:"https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/esm/",base:"https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/esm/"},
+    {name:"unpkg",lib:"https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/esm/",base:"https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm/"}];
+   // Download with a visible MB counter, and give up on a source that stalls for 30 s.
+   const getBuf=async(url,show)=>{
+    const ctl=new AbortController();let idle=setTimeout(()=>ctl.abort(),30000);
+    try{
+     const r=await fetch(url,{signal:ctl.signal});
+     if(!r.ok)throw new Error("HTTP "+r.status+" for "+url);
+     const total=+r.headers.get("content-length")||0;
+     if(!r.body||!show)return await r.arrayBuffer();
+     const reader=r.body.getReader(),parts=[];let got=0;
+     for(;;){
+      const {done,value}=await reader.read();if(done)break;
+      parts.push(value);got+=value.length;clearTimeout(idle);idle=setTimeout(()=>ctl.abort(),30000);
+      say("Downloading video encoder: "+(got/1e6).toFixed(1)+(total?" of "+(total/1e6).toFixed(1):"")+" MB");
+     }
+     return await new Blob(parts).arrayBuffer();
+    }catch(e){if(e&&e.name==="AbortError")throw new Error("download stalled (no data for 30 s): "+url);throw e}
+    finally{clearTimeout(idle)}
+   };
+   const blobUrl=async(url,type,show)=>URL.createObjectURL(new Blob([await getBuf(url,show)],{type}));
+   const tryLoad=async src=>{
+    const {FFmpeg}=await import(src.lib+"index.js");
+    // Browsers refuse cross-origin Workers, so run the worker from blob: URLs.
+    const [constURL,errorsURL,workerSrc]=await Promise.all([
+     blobUrl(src.lib+"const.js","text/javascript"),blobUrl(src.lib+"errors.js","text/javascript"),
+     getBuf(src.lib+"worker.js").then(b=>new TextDecoder().decode(b))]);
+    const workerCode=workerSrc
+     .replace(/(["'])\.\/const\.js\1/g,JSON.stringify(constURL))
+     .replace(/(["'])\.\/errors\.js\1/g,JSON.stringify(errorsURL));
+    const classWorkerURL=URL.createObjectURL(new Blob([workerCode],{type:"text/javascript"}));
+    const coreURL=await blobUrl(src.base+"ffmpeg-core.js","text/javascript");
+    const wasmURL=await blobUrl(src.base+"ffmpeg-core.wasm","application/wasm",true);
+    const ff=new FFmpeg();
+    say("Starting the video encoder...");
+    await ff.load({classWorkerURL,coreURL,wasmURL});
+    return ff;
+   };
+   const errs=[];let ff=null;
+   for(const src of sources){
+    try{say("Loading the video encoder ("+src.name+")...");ff=await tryLoad(src);break}
+    catch(e){errs.push(src.name+": "+errText(e))}
+   }
+   if(!ff)throw new Error(errs.join(" | "));
+   return ff;
+  })().catch(e=>{ffmpegPromise=null;throw new Error("The video encoder (FFmpeg) could not load: "+errText(e)+". Check your connection, or put the encoder files in a ffmpeg folder next to this page.")});
+ }
+ return ffmpegPromise;
+}
+async function runFF(ff,args,label){
+ const tail=[],on=e=>{tail.push(e.message);if(tail.length>40)tail.shift()};
+ const prog=e=>{if(label&&e.progress>0&&e.progress<=1)say(label+": "+Math.round(e.progress*100)+"%")};
+ ff.on("log",on);ff.on("progress",prog);let code;
+ try{code=await ff.exec(args)}finally{ff.off("log",on);ff.off("progress",prog)}
+ if(code!==0)throw new Error("FFmpeg failed (exit code "+code+"). "+tail.filter(Boolean).slice(-3).join(" | "));
+}
+function escFilter(x){return String(x).replace(/,/g,"\\,")}
+function audioFilter(s){
+ const filters=[];
+ const bands=[];
+ if(s.bass)bands.push("equalizer=f=100:width_type=o:width=1:g="+s.bass);
+ if(s.mids)bands.push("equalizer=f=1000:width_type=o:width=1:g="+s.mids);
+ if(s.treble)bands.push("equalizer=f=8000:width_type=o:width=1:g="+s.treble);
+ filters.push(...bands);
+ if(s.compression>0)filters.push("acompressor=threshold=0.125:ratio="+(1+s.compression/4)+":attack=20:release=200");
+ if(s.gain)filters.push("volume="+s.gain+"dB");
+ if(s.fadeIn>0)filters.push("afade=t=in:st=0:d="+s.fadeIn);
+ if(s.fadeOut>0)filters.push("areverse","afade=t=in:st=0:d="+s.fadeOut,"areverse");
+ if(s.speed!==1){
+  let rate=s.speed;
+  const parts=[];
+  while(rate>2){parts.push("atempo=2");rate/=2}
+  while(rate<.5){parts.push("atempo=0.5");rate/=.5}
+  parts.push("atempo="+rate);filters.push(...parts);
+ }
+ filters.push("alimiter=limit="+Math.min(.99,10**(s.limiter/20)));
+ return filters.join(",");
+}
+// Give FFmpeg read access to the file without copying it all into memory (WORKERFS).
+let mountId=0;
+async function mountInput(ff,file){
+ const ext=(file.name.match(/\.[a-z0-9]{1,5}$/i)||[".media"])[0],name="input"+ext,dir="/in"+(++mountId);
+ try{
+  await ff.createDir(dir);
+  await ff.mount("WORKERFS",{files:[new File([file],name)]},dir);
+  return {path:dir+"/"+name,done:async()=>{try{await ff.unmount(dir)}catch{}try{await ff.deleteDir(dir)}catch{}}};
+ }catch(e){
+  const copy=tmp("copy",ext);
+  say("Loading the whole file into memory (this can be slow for big videos)...");
+  await ff.writeFile(copy,new Uint8Array(await file.arrayBuffer()));
+  return {path:copy,done:async()=>{try{await ff.deleteFile(copy)}catch{}}};
+ }
+}
+async function extractVideoAudio(file){
+ const ff=await getFFmpeg(),output=tmp("extract",".wav"),m=await mountInput(ff,file);
+ try{
+  say("Extracting audio (large videos can take a while)...");
+  await runFF(ff,["-i",m.path,"-vn","-sn","-dn","-ac","2","-ar","44100",output],"Extracting audio");
+  const data=await ff.readFile(output);
+  return new Blob([data],{type:"audio/wav"});
+ }finally{await m.done();await cleanup(ff,[output])}
+}
+function makeCoverCanvas(img){
+ if(!img)throw new Error("Select a cover image for this export.");
+ const W=1920,H=1080;
+ const c=document.createElement("canvas");c.width=W;c.height=H;
+ const ctx=c.getContext("2d");
+ // Blurred background: draw tiny, then scale up (works in every browser, unlike ctx.filter).
+ const small=document.createElement("canvas");small.width=96;small.height=54;
+ const sctx=small.getContext("2d"),bgScale=Math.max(96/img.width,54/img.height);
+ sctx.drawImage(img,(96-img.width*bgScale)/2,(54-img.height*bgScale)/2,img.width*bgScale,img.height*bgScale);
+ ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality="high";
+ ctx.drawImage(small,0,0,W,H);
+ ctx.fillStyle="rgba(0,0,0,.45)";ctx.fillRect(0,0,W,H);
+ // Foreground cover, centered, keeping its own aspect ratio.
+ const fit=Math.min(1000/img.width,900/img.height),w=img.width*fit,h=img.height*fit;
+ ctx.drawImage(img,(W-w)/2,(H-h)/2,w,h);
+ return c;
+}
+function probeSize(file){
+ return new Promise(res=>{
+  const v=document.createElement("video"),u=URL.createObjectURL(file);
+  v.preload="metadata";
+  v.onloadedmetadata=()=>{res({w:v.videoWidth,h:v.videoHeight});URL.revokeObjectURL(u)};
+  v.onerror=()=>{res(null);URL.revokeObjectURL(u)};
+  v.src=u;
+ });
+}
+let tmpId=0;
+const tmp=(prefix,ext)=>prefix+"-"+(++tmpId)+"-"+Date.now()+ext;
+async function cleanup(ff,files){for(const f of files)try{await ff.deleteFile(f)}catch{}}
+
+// Video input: keep the original footage, swap in the mastered audio.
+async function exportVideo(item,s){
+ const ff=await getFFmpeg();
+ const audio=tmp("mastered",".wav"),output=tmp("result",".mp4");
+ let m=null;
+ try{
+  const processed=master(await videoAudioBuffer(item.file),s);
+  m=await mountInput(ff,item.file);const input=m.path;
+  await ff.writeFile(audio,new Uint8Array(await wavBlob(processed).arrayBuffer()));
+  const mode=$("vsize").value,dim=await probeSize(item.file);
+  const widescreen=dim?dim.w/dim.h>=1.7:true;
+  const convert=mode==="force"||(mode==="auto"&&!widescreen);
+  let args;
+  if(convert){
+   say("Converting "+item.name+" to 1920×1080 (this can take a while)...");
+   const fc="[0:v]split[a][b];[a]scale=480:270:force_original_aspect_ratio=increase,crop=480:270,boxblur=10:2,scale=1920:1080,setsar=1[bg];"+
+    "[b]scale=1920:1080:force_original_aspect_ratio=decrease,setsar=1[fg];[bg][fg]overlay=(W-w)/2:(H-h)/2,format=yuv420p[v]";
+   args=["-i",input,"-i",audio,"-filter_complex",fc,"-map","[v]","-map","1:a:0","-c:v","libx264","-preset","veryfast","-crf","20","-r","30","-c:a","aac","-b:a","192k","-shortest","-movflags","+faststart",output];
+  }else{
+   args=["-i",input,"-i",audio,"-map","0:v:0","-map","1:a:0","-c:v","copy","-c:a","aac","-b:a","192k","-shortest","-movflags","+faststart",output];
+  }
+  await runFF(ff,args,"Encoding video");
+  const data=await ff.readFile(output);
+  return new Blob([data],{type:"video/mp4"});
+ }finally{if(m)await m.done();await cleanup(ff,[audio,output])}
+}
+
+// Audio-only input: cover art still image + mastered audio, always 1920x1080.
+async function exportAudioMp4(processed,img){
+ const ff=await getFFmpeg();
+ const png=await new Promise((res,rej)=>makeCoverCanvas(img).toBlob(b=>b?res(b):rej(new Error("Could not render the cover image.")),"image/png"));
+ const coverName=tmp("cover",".png"),audioName=tmp("audio",".wav"),outName=tmp("out",".mp4");
+ try{
+  await ff.writeFile(coverName,new Uint8Array(await png.arrayBuffer()));
+  await ff.writeFile(audioName,new Uint8Array(await wavBlob(processed).arrayBuffer()));
+  await runFF(ff,["-loop","1","-framerate","2","-i",coverName,"-i",audioName,"-map","0:v:0","-map","1:a:0",
+   "-vf","scale=1920:1080,setsar=1,format=yuv420p","-c:v","libx264","-tune","stillimage","-preset","veryfast","-r","30",
+   "-c:a","aac","-b:a","192k","-shortest","-movflags","+faststart",outName],"Encoding MP4");
+  const data=await ff.readFile(outName);
+  return new Blob([data],{type:"video/mp4"});
+ }finally{await cleanup(ff,[coverName,audioName,outName])}
+}
+
+// Returns {blob,name} instead of downloading, so results can be bundled.
+async function processItem(item,type){
+ const s=readSettings(),asCover=item.video&&(item.useCover||$("allCover").checked);
+ if(type==="mp4"&&item.video&&!asCover){
+  say("Mastering video: "+item.name+"...");
+  return {blob:await exportVideo(item,s),name:uniqueName(item.name,".mp4")};
+ }
+ say("Extracting and mastering audio: "+item.name+"...");
+ const buffer=item.video?await videoAudioBuffer(item.file):await decodeAudio(item.file);
+ const processed=master(buffer,s);
+ if(type==="wav")return {blob:wavBlob(processed),name:uniqueName(item.name,".wav")};
+ say("Encoding MP4: "+item.name+"...");
+ return {blob:await exportAudioMp4(processed,item.cover||cover),name:uniqueName(item.name,".mp4")};
+}
+
+/* Minimal ZIP writer (no compression, no dependencies). */
+const crcTable=(()=>{const t=new Uint32Array(256);for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;t[n]=c>>>0}return t})();
+function crc32(data){let c=0xFFFFFFFF;for(let i=0;i<data.length;i++)c=crcTable[(c^data[i])&255]^(c>>>8);return(c^0xFFFFFFFF)>>>0}
+async function makeZip(files){
+ const enc=new TextEncoder(),parts=[],central=[],d=new Date();
+ const time=(d.getHours()<<11)|(d.getMinutes()<<5)|(d.getSeconds()>>1);
+ const date=((d.getFullYear()-1980)<<9)|((d.getMonth()+1)<<5)|d.getDate();
+ let offset=0;
+ for(const f of files){
+  const data=new Uint8Array(await f.blob.arrayBuffer()),nameB=enc.encode(f.name),crc=crc32(data);
+  const lh=new DataView(new ArrayBuffer(30));
+  lh.setUint32(0,0x04034b50,true);lh.setUint16(4,20,true);lh.setUint16(6,0x0800,true);
+  lh.setUint16(10,time,true);lh.setUint16(12,date,true);lh.setUint32(14,crc,true);
+  lh.setUint32(18,data.length,true);lh.setUint32(22,data.length,true);lh.setUint16(26,nameB.length,true);
+  parts.push(lh.buffer,nameB,data);
+  const cd=new DataView(new ArrayBuffer(46));
+  cd.setUint32(0,0x02014b50,true);cd.setUint16(4,20,true);cd.setUint16(6,20,true);cd.setUint16(8,0x0800,true);
+  cd.setUint16(12,time,true);cd.setUint16(14,date,true);cd.setUint32(16,crc,true);
+  cd.setUint32(20,data.length,true);cd.setUint32(24,data.length,true);cd.setUint16(28,nameB.length,true);
+  cd.setUint32(42,offset,true);
+  central.push(cd.buffer,nameB);
+  offset+=30+nameB.length+data.length;
+ }
+ const cdSize=central.reduce((n,p)=>n+(p.byteLength??p.length),0);
+ const end=new DataView(new ArrayBuffer(22));
+ end.setUint32(0,0x06054b50,true);end.setUint16(8,files.length,true);end.setUint16(10,files.length,true);
+ end.setUint32(12,cdSize,true);end.setUint32(16,offset,true);
+ return new Blob([...parts,...central,end.buffer],{type:"application/zip"});
+}
+
+async function runExport(list,type){
+ if(busy)return;
+ if(!list.length){say("Select at least one file first.");return}
+ if(type==="mp4"){
+  const miss=list.filter(x=>wantsCover(x)&&!(x.cover||cover));
+  if(miss.length){say("Choose a cover image (step 3, or per file) for: "+miss.map(x=>x.name).join(", "));return}
+ }
+ busy=true;usedNames.clear();$("progress").value=0;$("errlog").hidden=true;$("errlog").textContent="";
+ const results=[];let i=0,failed=0;
+ try{
+  for(const item of list){
+   item.status="Processing";render();
+   if(list.length>1)say("Processing "+(i+1)+" of "+list.length+": "+item.name);
+   try{results.push(await processItem(item,type));item.status="Processed"}
+   catch(e){failed++;item.status="Failed: "+errText(e);logError(item.name,e)}
+   i++;$("progress").value=i/list.length;render();
+  }
+  if(!results.length){say("Nothing was exported. The error for each file is listed below.");return}
+  const total=results.reduce((n,r)=>n+r.blob.size,0);
+  // Published pages can’t save .wav directly, so WAV exports are always zipped there.
+  const needZip=!!(await getDownloads())&&results.some(r=>/\.wav$/i.test(r.name));
+  try{
+   if(((results.length>1&&$("zip").checked)||needZip)&&total<4e9){
+    say("Creating ZIP...");
+    const stamp=new Date().toISOString().slice(0,19).replace(/[:T]/g,"-");
+    await download(await makeZip(results),"mastered-export-"+stamp+".zip");
+   }else{
+    for(const r of results)await download(r.blob,r.name);
+   }
+  }catch(e){logError("Saving",e);say("Could not save: "+errText(e));return}
+  list.forEach(x=>{if(x.status==="Processed")x.status="Export complete"});render();
+  say("Finished: "+results.length+" file(s) exported"+(failed?", "+failed+" failed (see below).":"."));
+ }catch(e){logError("Export",e);say("Export failed: "+errText(e))}
+ finally{busy=false}
+}
+const selected=()=>items.filter(x=>x.selected);
+$("selWav").onclick=()=>runExport(selected(),"wav");
+$("selMp4").onclick=()=>runExport(selected(),"mp4");
+$("allWav").onclick=()=>runExport([...items],"wav");
+$("allMp4").onclick=()=>runExport([...items],"mp4");
+
+const ENCODER_FILES=[
+ ["ffmpeg/lib/","@ffmpeg/ffmpeg@0.12.10/dist/esm/",["index.js","classes.js","const.js","errors.js","types.js","utils.js","worker.js"]],
+ ["ffmpeg/core/","@ffmpeg/core@0.12.6/dist/esm/",["ffmpeg-core.js","ffmpeg-core.wasm"]]];
+$("dlEncoder").onclick=async()=>{
+ if(busy)return;busy=true;$("errlog").hidden=true;$("errlog").textContent="";
+ const files=[],missing=[];
+ try{
+  for(const [dir,path,names] of ENCODER_FILES)for(const n of names){
+   let buf=null;
+   for(const host of ["https://cdn.jsdelivr.net/npm/","https://unpkg.com/"]){
+    try{
+     say("Downloading "+n+"...");
+     const r=await fetch(host+path+n);if(!r.ok)continue;
+     buf=await r.arrayBuffer();break;
+    }catch{}
+   }
+   if(buf)files.push({name:dir+n,blob:new Blob([buf])});else missing.push(n);
+  }
+  if(!files.length)throw new Error("Could not download any encoder files. Check your connection.");
+  say("Creating ZIP...");
+  await download(await makeZip(files),"ffmpeg-encoder-files.zip");
+  say("Encoder ZIP ready ("+files.length+" files)"+(missing.length?"; could not get: "+missing.join(", "):"")+".");
+ }catch(e){logError("Encoder download",e);say("Encoder download failed: "+errText(e))}
+ finally{busy=false}
+};
+$("testEncoder").onclick=async()=>{
+ if(busy)return;busy=true;$("errlog").hidden=true;$("errlog").textContent="";
+ try{await getFFmpeg();say("Encoder loaded successfully. Video export is ready.")}
+ catch(e){logError("Encoder test",e);say("Encoder failed to load: "+errText(e))}
+ finally{busy=false}
+};
+render();
+</script>
+</body>
+</html>
